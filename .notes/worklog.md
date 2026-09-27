@@ -22,3 +22,4 @@ left unfinished. Append as you go; a line or two per entry is right.
 - The grid's first version is a plain table. If the range changes while a request is still loading, the old request gets cancelled so it can't overwrite the new one.
 - Names don't sort alphabetically: "Guillermo Álvarez" ends up after "Guillermo Ruiz", and the Greek, Arabic and other non-Latin names all end up at the bottom. The Alpine Postgres image sorts text byte by byte. Asking for ICU sorting in the query fixes it, but I haven't changed it yet.
 - The heading says the range ends on Jan 16, a Friday, but the grid actually runs to Sunday the 18th. I'll fix it with the navigation work.
+- Only over-allocated weeks get highlighted, in red with the extra hours next to them. Eli has 0 hours of capacity, so any work at all shows as over. I skipped anything fancier because the brief just says over-allocation should be obvious at a glance.

@@ -30,3 +30,20 @@ td {
   padding: 0.5rem 0.75rem;
   text-align: left;
 }
+
+.over {
+  background: #fde2e1;
+  color: #8a1c17;
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .over {
+    background: #5c1a17;
+    color: #ffd7d4;
+  }
+}
+
+.over-by {
+  font-size: 0.85em;
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { fetchCapacity, type CapacityResponse } from './api'
+import { hoursOver } from './capacity'
 
 type Props = {
   from: string
@@ -55,11 +56,15 @@ export function CapacityGrid({ from, to }: Props) {
         {people.map((person) => (
           <tr key={person.id}>
             <th scope="row">{person.name}</th>
-            {person.allocated.map((hours, i) => (
-              <td key={weeks[i]}>
-                {formatHours(hours)} / {formatHours(person.weekly_hours)}
-              </td>
-            ))}
+            {person.allocated.map((hours, i) => {
+              const over = hoursOver(hours, person.weekly_hours)
+              return (
+                <td key={weeks[i]} className={over > 0 ? 'over' : undefined}>
+                  {formatHours(hours)} / {formatHours(person.weekly_hours)}
+                  {over > 0 && <span className="over-by"> +{formatHours(over)}</span>}
+                </td>
+              )
+            })}
           </tr>
         ))}
       </tbody>
