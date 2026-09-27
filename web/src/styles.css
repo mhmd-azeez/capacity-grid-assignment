@@ -99,40 +99,28 @@ td {
   }
 }
 
-dialog {
-  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-  border-radius: 8px;
-  padding: 1.25rem 1.5rem;
-  min-width: 18rem;
-}
-
-dialog::backdrop {
-  background: rgb(0 0 0 / 0.35);
-}
-
-dialog h2 {
-  font-size: 1.1rem;
-  margin: 0 0 1rem;
-}
-
-dialog .hint {
-  font-size: 0.85em;
-  opacity: 0.7;
-}
-
-dialog .actions {
+.hours-editor {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-
-.pager {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
-  font-variant-numeric: tabular-nums;
+  gap: 0.35rem;
+  max-width: 16rem;
+}
+
+.hours-editor input {
+  width: 5rem;
+  font: inherit;
+}
+
+.hours-editor p {
+  margin: 0;
+  flex-basis: 100%;
+  font-size: 0.85em;
+}
+
+.lock-note {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.85em;
 }
 
 .weekdays-note {

@@ -1,17 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CapacityGrid } from './CapacityGrid'
-
-// jsdom has <dialog> but not showModal/close.
-beforeAll(() => {
-  HTMLDialogElement.prototype.showModal = function () {
-    this.open = true
-  }
-  HTMLDialogElement.prototype.close = function () {
-    this.open = false
-  }
-})
 
 afterEach(() => {
   cleanup()
@@ -40,40 +30,55 @@ function stubFetch(patch: (body: { weekly_hours: number }) => Response | Promise
   return fetchMock
 }
 
+function renderGrid() {
+  render(
+    <CapacityGrid
+      from="2025-12-29"
+      to="2026-01-11"
+      page={1}
+      name=""
+      onRangeChange={() => {}}
+      onPageChange={() => {}}
+      onNameChange={() => {}}
+    />,
+  )
+}
+
+function anaRow() {
+  return screen.getByRole('row', { name: /Ana Ferreira/ })
+}
+
 async function openEditorAndSave(hours: string) {
-  render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={1} name="" onRangeChange={() => {}} onPageChange={() => {}} onNameChange={() => {}} />)
+  renderGrid()
   fireEvent.click(await screen.findByRole('button', { name: /Edit weekly hours for Ana Ferreira/ }))
-  const dialog = screen.getByRole('dialog')
-  fireEvent.change(within(dialog).getByRole('spinbutton'), { target: { value: hours } })
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
-  return dialog
+  fireEvent.change(within(anaRow()).getByRole('spinbutton'), { target: { value: hours } })
+  fireEvent.click(within(anaRow()).getByRole('button', { name: 'Save' }))
 }
 
 function anaFirstWeek() {
-  const row = screen.getByRole('row', { name: /Ana Ferreira/ })
-  return within(row).getAllByRole('cell')[1] // [0] is the weekly hours button
+  return within(anaRow()).getAllByRole('cell')[1] // [0] is the weekly hours cell
 }
 
 describe('editing weekly hours', () => {
-  it('updates the row from the saved value and closes the dialog', async () => {
+  it('updates the row from the saved value and closes the editor', async () => {
     stubFetch((body) => json({ id: 1, name: 'Ana Ferreira', weekly_hours: body.weekly_hours }))
     await openEditorAndSave('60')
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await waitFor(() => expect(screen.queryByRole('spinbutton')).toBeNull())
     expect(anaFirstWeek().textContent).toBe('56 / 60')
     expect(anaFirstWeek().className).not.toContain('over')
     expect(screen.getByRole('status').textContent).toContain('Ana Ferreira is now at 60 hours')
   })
 
-  it('keeps the grid on the saved value and the typed value in the dialog when the save fails', async () => {
+  it('keeps the grid on the saved value and the typed value in the editor when the save fails', async () => {
     stubFetch(() => new Response('database is down', { status: 500 }))
 
-    const dialog = await openEditorAndSave('60')
+    await openEditorAndSave('60')
 
-    await within(dialog).findByRole('alert')
-    expect(within(dialog).getByRole('alert').textContent).toContain("wasn't saved")
-    expect((within(dialog).getByRole('spinbutton') as HTMLInputElement).value).toBe('60')
-    expect(within(dialog).getByRole('button', { name: 'Try again' })).toBeDefined()
+    await within(anaRow()).findByRole('alert')
+    expect(within(anaRow()).getByRole('alert').textContent).toContain("wasn't saved")
+    expect((within(anaRow()).getByRole('spinbutton') as HTMLInputElement).value).toBe('60')
+    expect(within(anaRow()).getByRole('button', { name: 'Try again' })).toBeDefined()
     expect(anaFirstWeek().textContent).toBe('56 / 40 +16')
     expect(anaFirstWeek().className).toContain('over')
   })
@@ -81,9 +86,9 @@ describe('editing weekly hours', () => {
   it('does not send a value outside 0 to 168', async () => {
     const fetchMock = stubFetch(() => json({}))
 
-    const dialog = await openEditorAndSave('200')
+    await openEditorAndSave('200')
 
-    expect(within(dialog).getByText('Must be between 0 and 168.')).toBeDefined()
+    expect(within(anaRow()).getByText('Must be between 0 and 168.')).toBeDefined()
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
   })
 })
@@ -167,5 +172,25 @@ describe('filtering by name', () => {
     const url = new URL(String(fetchMock.mock.calls.at(-1)?.[0]), 'http://x')
     expect(url.searchParams.get('q')).toBe('bo')
     expect(url.searchParams.get('offset')).toBe('0')
+  })
+})
+
+describe('while a row is being edited', () => {
+  it('locks navigation, and unlocks it on cancel', async () => {
+    stubFetch(() => json({}))
+    renderGrid()
+    fireEvent.click(await screen.findByRole('button', { name: /Edit weekly hours for Ana Ferreira/ }))
+
+    for (const name of [/Previous week/, /This week/, /Next week/]) {
+      expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true)
+    }
+    expect(screen.getByRole('searchbox')).toHaveProperty('disabled', true)
+    expect(screen.getByLabelText('From')).toHaveProperty('disabled', true)
+
+    fireEvent.click(within(anaRow()).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByRole('button', { name: /Next week/ })).toHaveProperty('disabled', false)
+    expect(screen.getByRole('searchbox')).toHaveProperty('disabled', false)
+    expect(screen.queryByRole('spinbutton')).toBeNull()
   })
 })

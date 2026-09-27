@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { fetchCapacity, MAX_WEEKS, PAGE_SIZE, type CapacityResponse, type Person } from './api'
 import { hoursOver } from './capacity'
-import { EditHoursDialog } from './EditHoursDialog'
+import { HoursEditor } from './HoursEditor'
 import { addDays, formatDay, formatDayYear, isISODate, startOfWeek, today, weeksBetween } from './dates'
 
 export type Range = {
@@ -32,7 +32,11 @@ type State = {
 export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange, onNameChange }: Props) {
   const [state, setState] = useState<State>({ data: null, loading: true, error: null })
   const [attempt, setAttempt] = useState(0)
-  const [editing, setEditing] = useState<Person | null>(null)
+  // The person whose hours are being edited in their row. While set,
+  // everything that could move that row off screen is locked, so an unsaved
+  // or failed edit can't disappear.
+  const [editing, setEditing] = useState<number | null>(null)
+  const locked = editing !== null
   const [saved, setSaved] = useState<Person | null>(null)
   const topRef = useRef<HTMLDivElement>(null)
 
@@ -59,8 +63,14 @@ export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange
     if (lastPage !== null && page > lastPage) onPageChange(lastPage)
   }, [page, lastPage, onPageChange])
 
-  function onSaved(person: Person) {
+  function stopEditing(id: number) {
     setEditing(null)
+    // Put focus back where the manager started.
+    requestAnimationFrame(() => document.getElementById(`edit-hours-${id}`)?.focus())
+  }
+
+  function onSaved(person: Person) {
+    stopEditing(person.id)
     setSaved(person)
     // Allocations don't depend on weekly hours, so patching the one number
     // is enough to keep every cell and highlight in the row correct.
@@ -91,18 +101,19 @@ export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange
   return (
     <section>
       <div className="toolbar" ref={topRef}>
-        <button type="button" onClick={() => shift(-7)}>
+        <button type="button" onClick={() => shift(-7)} disabled={locked}>
           ← Previous week
         </button>
-        <button type="button" onClick={thisWeek}>
+        <button type="button" onClick={thisWeek} disabled={locked}>
           This week
         </button>
-        <button type="button" onClick={() => shift(7)}>
+        <button type="button" onClick={() => shift(7)} disabled={locked}>
           Next week →
         </button>
-        <RangePicker from={from} to={to} onRangeChange={onRangeChange} />
-        <NameSearch name={name} onNameChange={onNameChange} />
+        <RangePicker from={from} to={to} onRangeChange={onRangeChange} disabled={locked} />
+        <NameSearch name={name} onNameChange={onNameChange} disabled={locked} />
       </div>
+      {locked && <p className="lock-note">Save or cancel the edit to change weeks, pages or the search.</p>}
 
       <p className="range">
         {formatDayYear(from)} to {formatDayYear(to)} · {weeks} {weeks === 1 ? 'week' : 'weeks'}
@@ -117,11 +128,14 @@ export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange
       <Body
         name={name}
         state={state}
+        editing={editing}
         onRetry={() => setAttempt((n) => n + 1)}
         onEdit={(person) => {
           setSaved(null) // an old confirmation next to a new edit is misleading
-          setEditing(person)
+          setEditing(person.id)
         }}
+        onSaved={onSaved}
+        onCancel={stopEditing}
       />
 
       {state.data && !state.error && (
@@ -133,11 +147,9 @@ export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange
           total={state.data.total}
           onPrevious={page > 1 ? () => goToPage(page - 1) : undefined}
           onNext={lastPage !== null && page < lastPage ? () => goToPage(page + 1) : undefined}
-          disabled={state.loading}
+          disabled={state.loading || locked}
         />
       )}
-
-      {editing && <EditHoursDialog person={editing} onSaved={onSaved} onClose={() => setEditing(null)} />}
     </section>
   )
 }
@@ -145,11 +157,14 @@ export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange
 type BodyProps = {
   name: string
   state: State
+  editing: number | null
   onRetry: () => void
   onEdit: (person: Person) => void
+  onSaved: (person: Person) => void
+  onCancel: (id: number) => void
 }
 
-function Body({ name, state, onRetry, onEdit }: BodyProps) {
+function Body({ name, state, editing, onRetry, onEdit, onSaved, onCancel }: BodyProps) {
   if (state.error) {
     // The old table belongs to a different range, so don't leave it up
     // under a heading that no longer matches it.
@@ -188,14 +203,20 @@ function Body({ name, state, onRetry, onEdit }: BodyProps) {
           <tr key={person.id}>
             <th scope="row">{person.name}</th>
             <td>
-              <button
-                type="button"
-                className="edit-hours"
-                onClick={() => onEdit(person)}
-                aria-label={`Edit weekly hours for ${person.name}, currently ${formatHours(person.weekly_hours)}`}
-              >
-                {formatHours(person.weekly_hours)} h ✎
-              </button>
+              {editing === person.id ? (
+                <HoursEditor person={person} onSaved={onSaved} onCancel={() => onCancel(person.id)} />
+              ) : (
+                <button
+                  type="button"
+                  id={`edit-hours-${person.id}`}
+                  className="edit-hours"
+                  onClick={() => onEdit(person)}
+                  disabled={editing !== null}
+                  aria-label={`Edit weekly hours for ${person.name}, currently ${formatHours(person.weekly_hours)}`}
+                >
+                  {formatHours(person.weekly_hours)} h ✎
+                </button>
+              )}
             </td>
             {person.allocated.map((hours, i) => {
               const over = hoursOver(hours, person.weekly_hours)
@@ -240,7 +261,13 @@ function Pager({ offset, shown, total, onPrevious, onNext, disabled }: PagerProp
 }
 
 // Searches once typing pauses, so each keystroke doesn't fire a request.
-function NameSearch({ name, onNameChange }: { name: string; onNameChange: (name: string) => void }) {
+type NameSearchProps = {
+  name: string
+  onNameChange: (name: string) => void
+  disabled: boolean
+}
+
+function NameSearch({ name, onNameChange, disabled }: NameSearchProps) {
   const [draft, setDraft] = useState(name)
 
   // When the name changes from outside, show it.
@@ -248,22 +275,34 @@ function NameSearch({ name, onNameChange }: { name: string; onNameChange: (name:
 
   useEffect(() => {
     const trimmed = draft.trim()
-    if (trimmed === name) return
+    // A search typed just before an edit started waits until it's done.
+    if (disabled || trimmed === name) return
     const timer = setTimeout(() => onNameChange(trimmed), 250)
     return () => clearTimeout(timer)
-  }, [draft, name, onNameChange])
+  }, [draft, name, onNameChange, disabled])
 
   return (
     <label className="name-search">
       Name{' '}
-      <input type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Filter people" />
+      <input
+        type="search"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Filter people"
+        disabled={disabled}
+      />
     </label>
   )
 }
 
 // Two date inputs. Edits stay local until they make a valid range, so a
 // half-typed date never reaches the API.
-function RangePicker({ from, to, onRangeChange }: Range & { onRangeChange: (range: Range) => void }) {
+type RangePickerProps = Range & {
+  onRangeChange: (range: Range) => void
+  disabled: boolean
+}
+
+function RangePicker({ from, to, onRangeChange, disabled }: RangePickerProps) {
   const [draft, setDraft] = useState({ from, to })
 
   // When the range changes from outside (the week buttons), show it.
@@ -279,10 +318,22 @@ function RangePicker({ from, to, onRangeChange }: Range & { onRangeChange: (rang
   return (
     <span className="range-picker">
       <label>
-        From <input type="date" value={draft.from} onChange={(e) => update({ ...draft, from: e.target.value })} />
+        From{' '}
+        <input
+          type="date"
+          value={draft.from}
+          onChange={(e) => update({ ...draft, from: e.target.value })}
+          disabled={disabled}
+        />
       </label>
       <label>
-        To <input type="date" value={draft.to} onChange={(e) => update({ ...draft, to: e.target.value })} />
+        To{' '}
+        <input
+          type="date"
+          value={draft.to}
+          onChange={(e) => update({ ...draft, to: e.target.value })}
+          disabled={disabled}
+        />
       </label>
       {problem && (
         <span role="alert" className="field-error">
