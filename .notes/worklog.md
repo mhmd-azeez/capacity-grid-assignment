@@ -27,3 +27,7 @@ left unfinished. Append as you go; a line or two per entry is right.
 - The range lives in the URL, so a refresh or a shared link opens the same weeks. It replaces the history entry instead of adding one, so the back button doesn't step through every week you clicked past.
 - While a new range loads, the old grid stays on screen, faded, instead of going blank on every click. If the load fails, the old grid goes away and you get the error with a retry button, because leaving it up would show numbers for different weeks under the new heading.
 - A bad range in the date inputs (end before start, or over two years) shows a message and never reaches the API.
+- Saving someone's weekly hours returns the updated person and nothing else. Their allocations don't depend on capacity, so the grid only needs that one number back.
+- Weekly hours can be anything from 0 to 168, the number of hours in a week. 0 has to be allowed because Eli is already at 0.
+- There's no history of capacity in the schema, so a change applies to every week, past ones included. If someone drops from 40 to 32 hours next month, the grid will also show them at 32 last year. Proper fix is capacity with an effective date, which is out of scope here.
+- Two managers saving the same person at once: last write wins. No conflict check.
