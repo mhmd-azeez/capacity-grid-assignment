@@ -19,3 +19,6 @@ left unfinished. Append as you go; a line or two per entry is right.
 - Looked at the output across all the data. A third of busy weeks come out over capacity, and most of that is weekends: every assignment starts on a Monday, but plenty run to Saturday or Sunday. Counting only weekdays cuts the over-allocated weeks from 4,779 to 1,626.
 - We're counting all 7 days for now and will come back to it. That's why Ana still shows 56 of 40.
 - The generated data runs in a three-week cycle, busy, less busy, then empty. The week of Jan 12, 2026 is the exception. It only has the handful of hand-written assignments for Ana, Bo, Cem and Dee, and the default date range is set to show exactly those. Holidays like Jan 1 count as normal days because there's no holiday data.
+- The grid's first version is a plain table. If the range changes while a request is still loading, the old request gets cancelled so it can't overwrite the new one.
+- Names don't sort alphabetically: "Guillermo Álvarez" ends up after "Guillermo Ruiz", and the Greek, Arabic and other non-Latin names all end up at the bottom. The Alpine Postgres image sorts text byte by byte. Asking for ICU sorting in the query fixes it, but I haven't changed it yet.
+- The heading says the range ends on Jan 16, a Friday, but the grid actually runs to Sunday the 18th. I'll fix it with the navigation work.
