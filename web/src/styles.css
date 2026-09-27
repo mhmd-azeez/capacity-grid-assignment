@@ -47,3 +47,36 @@ td {
 .over-by {
   font-size: 0.85em;
 }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.range-picker {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 1rem;
+}
+
+.field-error,
+.error {
+  color: #b3261e;
+}
+
+@media (prefers-color-scheme: dark) {
+  .field-error,
+  .error {
+    color: #ffb4ab;
+  }
+}
+
+.stale {
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}

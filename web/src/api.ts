@@ -1,6 +1,9 @@
 // Shapes returned by the Go API. Dates are calendar dates as "YYYY-MM-DD"
 // strings, never timestamps, so they can't shift with the browser's zone.
 
+// Longest range the API accepts. Keep in step with maxWeeks in api/capacity.go.
+export const MAX_WEEKS = 106
+
 export type CapacityPerson = {
   id: number
   name: string
