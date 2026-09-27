@@ -18,6 +18,23 @@ export type CapacityResponse = {
   people: CapacityPerson[]
 }
 
+export type Person = {
+  id: number
+  name: string
+  weekly_hours: number
+}
+
+// An HTTP error from the API, with the status kept so callers can word the
+// message for the manager.
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
 export async function fetchCapacity(
   from: string,
   to: string,
@@ -26,7 +43,19 @@ export async function fetchCapacity(
   const params = new URLSearchParams({ from, to })
   const res = await fetch(`/api/capacity?${params}`, { signal })
   if (!res.ok) {
-    throw new Error(await errorMessage(res))
+    throw new ApiError(res.status, await errorMessage(res))
+  }
+  return res.json()
+}
+
+export async function updateWeeklyHours(id: number, weeklyHours: number): Promise<Person> {
+  const res = await fetch(`/api/people/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ weekly_hours: weeklyHours }),
+  })
+  if (!res.ok) {
+    throw new ApiError(res.status, await errorMessage(res))
   }
   return res.json()
 }

@@ -80,3 +80,49 @@ td {
   opacity: 0.5;
   transition: opacity 0.15s;
 }
+
+.edit-hours {
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.saved {
+  min-height: 1.2em;
+  margin: 0 0 0.75rem;
+  color: #1e6b34;
+}
+
+@media (prefers-color-scheme: dark) {
+  .saved {
+    color: #9fdcaf;
+  }
+}
+
+dialog {
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  min-width: 18rem;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+
+dialog h2 {
+  font-size: 1.1rem;
+  margin: 0 0 1rem;
+}
+
+dialog .hint {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+dialog .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}

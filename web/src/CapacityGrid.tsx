@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { fetchCapacity, MAX_WEEKS, type CapacityResponse } from './api'
+import { fetchCapacity, MAX_WEEKS, type CapacityResponse, type Person } from './api'
 import { hoursOver } from './capacity'
+import { EditHoursDialog } from './EditHoursDialog'
 import { addDays, formatDay, formatDayYear, isISODate, startOfWeek, today, weeksBetween } from './dates'
 
 export type Range = {
@@ -25,6 +26,8 @@ type State = {
 export function CapacityGrid({ from, to, onRangeChange }: Props) {
   const [state, setState] = useState<State>({ data: null, loading: true, error: null })
   const [attempt, setAttempt] = useState(0)
+  const [editing, setEditing] = useState<Person | null>(null)
+  const [saved, setSaved] = useState<Person | null>(null)
 
   useEffect(() => {
     // Abort the in-flight request when the range changes or the grid
@@ -41,6 +44,23 @@ export function CapacityGrid({ from, to, onRangeChange }: Props) {
     )
     return () => controller.abort()
   }, [from, to, attempt])
+
+  function onSaved(person: Person) {
+    setEditing(null)
+    setSaved(person)
+    // Allocations don't depend on weekly hours, so patching the one number
+    // is enough to keep every cell and highlight in the row correct.
+    setState((s) => ({
+      ...s,
+      data: s.data && {
+        ...s.data,
+        people: s.data.people.map((p) => (p.id === person.id ? { ...p, weekly_hours: person.weekly_hours } : p)),
+      },
+    }))
+    // A range that was already loading was requested before the save and
+    // may carry the old value, so ask again.
+    if (state.loading) setAttempt((n) => n + 1)
+  }
 
   const weeks = weeksBetween(from, to)
   const shift = (days: number) => onRangeChange({ from: addDays(from, days), to: addDays(to, days) })
@@ -69,12 +89,31 @@ export function CapacityGrid({ from, to, onRangeChange }: Props) {
         {state.loading && state.data && <span className="status"> · Updating…</span>}
       </p>
 
-      <Body state={state} onRetry={() => setAttempt((n) => n + 1)} />
+      <p role="status" className="saved">
+        {saved && `Saved: ${saved.name} is now at ${formatHours(saved.weekly_hours)} hours a week.`}
+      </p>
+
+      <Body
+        state={state}
+        onRetry={() => setAttempt((n) => n + 1)}
+        onEdit={(person) => {
+          setSaved(null) // an old confirmation next to a new edit is misleading
+          setEditing(person)
+        }}
+      />
+
+      {editing && <EditHoursDialog person={editing} onSaved={onSaved} onClose={() => setEditing(null)} />}
     </section>
   )
 }
 
-function Body({ state, onRetry }: { state: State; onRetry: () => void }) {
+type BodyProps = {
+  state: State
+  onRetry: () => void
+  onEdit: (person: Person) => void
+}
+
+function Body({ state, onRetry, onEdit }: BodyProps) {
   if (state.error) {
     // The old table belongs to a different range, so don't leave it up
     // under a heading that no longer matches it.
@@ -97,6 +136,7 @@ function Body({ state, onRetry }: { state: State; onRetry: () => void }) {
       <thead>
         <tr>
           <th scope="col">Person</th>
+          <th scope="col">Weekly hours</th>
           {weeks.map((week) => (
             <th scope="col" key={week}>
               {formatDay(week)}
@@ -108,6 +148,16 @@ function Body({ state, onRetry }: { state: State; onRetry: () => void }) {
         {people.map((person) => (
           <tr key={person.id}>
             <th scope="row">{person.name}</th>
+            <td>
+              <button
+                type="button"
+                className="edit-hours"
+                onClick={() => onEdit(person)}
+                aria-label={`Edit weekly hours for ${person.name}, currently ${formatHours(person.weekly_hours)}`}
+              >
+                {formatHours(person.weekly_hours)} h ✎
+              </button>
+            </td>
             {person.allocated.map((hours, i) => {
               const over = hoursOver(hours, person.weekly_hours)
               return (
