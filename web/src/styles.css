@@ -126,3 +126,11 @@ dialog .actions {
   gap: 0.5rem;
   margin-top: 1rem;
 }
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}

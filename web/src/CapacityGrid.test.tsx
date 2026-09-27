@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { CapacityGrid } from './CapacityGrid'
 
@@ -20,6 +21,9 @@ afterEach(() => {
 const capacity = {
   weeks: ['2025-12-29', '2026-01-05'],
   people: [{ id: 1, name: 'Ana Ferreira', weekly_hours: 40, allocated: [56, 0] }],
+  total: 1,
+  offset: 0,
+  limit: 20,
 }
 
 function json(body: unknown, status = 200) {
@@ -37,7 +41,7 @@ function stubFetch(patch: (body: { weekly_hours: number }) => Response | Promise
 }
 
 async function openEditorAndSave(hours: string) {
-  render(<CapacityGrid from="2025-12-29" to="2026-01-11" onRangeChange={() => {}} />)
+  render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={1} onRangeChange={() => {}} onPageChange={() => {}} />)
   fireEvent.click(await screen.findByRole('button', { name: /Edit weekly hours for Ana Ferreira/ }))
   const dialog = screen.getByRole('dialog')
   fireEvent.change(within(dialog).getByRole('spinbutton'), { target: { value: hours } })
@@ -81,5 +85,49 @@ describe('editing weekly hours', () => {
 
     expect(within(dialog).getByText('Must be between 0 and 168.')).toBeDefined()
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PATCH')).toBe(false)
+  })
+})
+
+describe('paging through people', () => {
+  it('asks for the offset of the page it is on and moves one page at a time', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const offset = Number(new URL(url, 'http://x').searchParams.get('offset'))
+      const person =
+        offset === 0
+          ? { id: 1, name: 'Ana Ferreira', weekly_hours: 40, allocated: [56, 0] }
+          : { id: 2, name: 'Bo Lindqvist', weekly_hours: 40, allocated: [0, 48] }
+      return json({ ...capacity, people: [person], total: 21, offset, limit: 20 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    Element.prototype.scrollIntoView = () => {}
+
+    function Paged() {
+      const [page, setPage] = useState(1)
+      return <CapacityGrid from="2025-12-29" to="2026-01-11" page={page} onRangeChange={() => {}} onPageChange={setPage} />
+    }
+    render(<Paged />)
+
+    await screen.findByText('Ana Ferreira')
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('offset=0')
+    expect(screen.getByRole('button', { name: /Previous page/ })).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByRole('button', { name: /Next page/ }))
+    await screen.findByText('Bo Lindqvist')
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('offset=20')
+    expect(screen.getByText(/People 21–21 of 21/)).toBeDefined()
+    expect(screen.getByRole('button', { name: /Next page/ })).toHaveProperty('disabled', true)
+
+    fireEvent.click(screen.getByRole('button', { name: /Previous page/ }))
+    await screen.findByText('Ana Ferreira')
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toContain('offset=0')
+  })
+
+  it('moves a link that points past the end back to the last page', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...capacity, people: [], total: 21, offset: 180, limit: 20 })))
+    const onPageChange = vi.fn()
+
+    render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={10} onRangeChange={() => {}} onPageChange={onPageChange} />)
+
+    await waitFor(() => expect(onPageChange).toHaveBeenCalledWith(2))
   })
 })

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { fetchCapacity, MAX_WEEKS, type CapacityResponse, type Person } from './api'
+import { useEffect, useRef, useState } from 'react'
+import { fetchCapacity, MAX_WEEKS, PAGE_SIZE, type CapacityResponse, type Person } from './api'
 import { hoursOver } from './capacity'
 import { EditHoursDialog } from './EditHoursDialog'
 import { addDays, formatDay, formatDayYear, isISODate, startOfWeek, today, weeksBetween } from './dates'
@@ -10,7 +10,10 @@ export type Range = {
 }
 
 type Props = Range & {
+  // 1-based page of people.
+  page: number
   onRangeChange: (range: Range) => void
+  onPageChange: (page: number) => void
 }
 
 type State = {
@@ -23,18 +26,19 @@ type State = {
 
 // CapacityGrid renders one row per person and one column per week, showing
 // how allocated each person is against their weekly hours.
-export function CapacityGrid({ from, to, onRangeChange }: Props) {
+export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Props) {
   const [state, setState] = useState<State>({ data: null, loading: true, error: null })
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState<Person | null>(null)
   const [saved, setSaved] = useState<Person | null>(null)
+  const topRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     // Abort the in-flight request when the range changes or the grid
     // unmounts, so a slow old response can't overwrite a newer one.
     const controller = new AbortController()
     setState((s) => ({ ...s, loading: true, error: null }))
-    fetchCapacity(from, to, controller.signal).then(
+    fetchCapacity(from, to, (page - 1) * PAGE_SIZE, controller.signal).then(
       (data) => setState({ data, loading: false, error: null }),
       (err: unknown) => {
         if (controller.signal.aborted) return
@@ -43,7 +47,14 @@ export function CapacityGrid({ from, to, onRangeChange }: Props) {
       },
     )
     return () => controller.abort()
-  }, [from, to, attempt])
+  }, [from, to, page, attempt])
+
+  // A shared link can point past the end if people were removed since.
+  // Land on the last page that has anyone on it.
+  const lastPage = state.data ? Math.max(1, Math.ceil(state.data.total / PAGE_SIZE)) : null
+  useEffect(() => {
+    if (lastPage !== null && page > lastPage) onPageChange(lastPage)
+  }, [page, lastPage, onPageChange])
 
   function onSaved(person: Person) {
     setEditing(null)
@@ -62,6 +73,11 @@ export function CapacityGrid({ from, to, onRangeChange }: Props) {
     if (state.loading) setAttempt((n) => n + 1)
   }
 
+  function goToPage(next: number) {
+    onPageChange(next)
+    topRef.current?.scrollIntoView({ block: 'start' })
+  }
+
   const weeks = weeksBetween(from, to)
   const shift = (days: number) => onRangeChange({ from: addDays(from, days), to: addDays(to, days) })
   const thisWeek = () => {
@@ -71,7 +87,7 @@ export function CapacityGrid({ from, to, onRangeChange }: Props) {
 
   return (
     <section>
-      <div className="toolbar">
+      <div className="toolbar" ref={topRef}>
         <button type="button" onClick={() => shift(-7)}>
           ← Previous week
         </button>
@@ -101,6 +117,19 @@ export function CapacityGrid({ from, to, onRangeChange }: Props) {
           setEditing(person)
         }}
       />
+
+      {state.data && !state.error && (
+        <Pager
+          // From the data on screen, not the page asked for: while the next
+          // page loads, the old rows are still showing.
+          offset={state.data.offset}
+          shown={state.data.people.length}
+          total={state.data.total}
+          onPrevious={page > 1 ? () => goToPage(page - 1) : undefined}
+          onNext={lastPage !== null && page < lastPage ? () => goToPage(page + 1) : undefined}
+          disabled={state.loading}
+        />
+      )}
 
       {editing && <EditHoursDialog person={editing} onSaved={onSaved} onClose={() => setEditing(null)} />}
     </section>
@@ -174,9 +203,35 @@ function Body({ state, onRetry, onEdit }: BodyProps) {
   )
 }
 
+type PagerProps = {
+  offset: number
+  shown: number
+  total: number
+  onPrevious?: () => void
+  onNext?: () => void
+  disabled: boolean
+}
+
+function Pager({ offset, shown, total, onPrevious, onNext, disabled }: PagerProps) {
+  const first = offset + 1
+  return (
+    <nav className="pager" aria-label="People pages">
+      <button type="button" onClick={onPrevious} disabled={!onPrevious || disabled}>
+        ← Previous page
+      </button>
+      <span>
+        People {first}–{first + shown - 1} of {total}
+      </span>
+      <button type="button" onClick={onNext} disabled={!onNext || disabled}>
+        Next page →
+      </button>
+    </nav>
+  )
+}
+
 // Two date inputs. Edits stay local until they make a valid range, so a
 // half-typed date never reaches the API.
-function RangePicker({ from, to, onRangeChange }: Props) {
+function RangePicker({ from, to, onRangeChange }: Range & { onRangeChange: (range: Range) => void }) {
   const [draft, setDraft] = useState({ from, to })
 
   // When the range changes from outside (the week buttons), show it.
