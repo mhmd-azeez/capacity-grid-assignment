@@ -134,3 +134,9 @@ dialog .actions {
   margin-top: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
+
+.weekdays-note {
+  margin: -1rem 0 1rem;
+  font-size: 0.85em;
+  opacity: 0.6;
+}

@@ -104,6 +104,7 @@ export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Pr
         {formatDayYear(from)} to {formatDayYear(to)} · {weeks} {weeks === 1 ? 'week' : 'weeks'}
         {state.loading && state.data && <span className="status"> · Updating…</span>}
       </p>
+      <p className="weekdays-note">Hours count Monday to Friday. Assigned weekend days aren't included.</p>
 
       <p role="status" className="saved">
         {saved && `Saved: ${saved.name} is now at ${formatHours(saved.weekly_hours)} hours a week.`}

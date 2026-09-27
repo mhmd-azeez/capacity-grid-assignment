@@ -68,6 +68,7 @@ alloc AS (
   WHERE a.person_id IN (SELECT id FROM page)
     AND a.start_date <= $2::date
     AND a.end_date >= $1::date
+    AND extract(isodow FROM d.day) <= 5 -- Monday to Friday; weekends aren't working days
   GROUP BY 1, 2
 )
 SELECT p.id,
