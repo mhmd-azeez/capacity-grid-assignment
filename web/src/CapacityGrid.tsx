@@ -12,8 +12,11 @@ export type Range = {
 type Props = Range & {
   // 1-based page of people.
   page: number
+  // Name filter; '' shows everyone.
+  name: string
   onRangeChange: (range: Range) => void
   onPageChange: (page: number) => void
+  onNameChange: (name: string) => void
 }
 
 type State = {
@@ -26,7 +29,7 @@ type State = {
 
 // CapacityGrid renders one row per person and one column per week, showing
 // how allocated each person is against their weekly hours.
-export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Props) {
+export function CapacityGrid({ from, to, page, name, onRangeChange, onPageChange, onNameChange }: Props) {
   const [state, setState] = useState<State>({ data: null, loading: true, error: null })
   const [attempt, setAttempt] = useState(0)
   const [editing, setEditing] = useState<Person | null>(null)
@@ -38,7 +41,7 @@ export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Pr
     // unmounts, so a slow old response can't overwrite a newer one.
     const controller = new AbortController()
     setState((s) => ({ ...s, loading: true, error: null }))
-    fetchCapacity(from, to, (page - 1) * PAGE_SIZE, controller.signal).then(
+    fetchCapacity(from, to, (page - 1) * PAGE_SIZE, name, controller.signal).then(
       (data) => setState({ data, loading: false, error: null }),
       (err: unknown) => {
         if (controller.signal.aborted) return
@@ -47,7 +50,7 @@ export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Pr
       },
     )
     return () => controller.abort()
-  }, [from, to, page, attempt])
+  }, [from, to, page, name, attempt])
 
   // A shared link can point past the end if people were removed since.
   // Land on the last page that has anyone on it.
@@ -98,6 +101,7 @@ export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Pr
           Next week →
         </button>
         <RangePicker from={from} to={to} onRangeChange={onRangeChange} />
+        <NameSearch name={name} onNameChange={onNameChange} />
       </div>
 
       <p className="range">
@@ -111,6 +115,7 @@ export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Pr
       </p>
 
       <Body
+        name={name}
         state={state}
         onRetry={() => setAttempt((n) => n + 1)}
         onEdit={(person) => {
@@ -138,12 +143,13 @@ export function CapacityGrid({ from, to, page, onRangeChange, onPageChange }: Pr
 }
 
 type BodyProps = {
+  name: string
   state: State
   onRetry: () => void
   onEdit: (person: Person) => void
 }
 
-function Body({ state, onRetry, onEdit }: BodyProps) {
+function Body({ name, state, onRetry, onEdit }: BodyProps) {
   if (state.error) {
     // The old table belongs to a different range, so don't leave it up
     // under a heading that no longer matches it.
@@ -161,6 +167,9 @@ function Body({ state, onRetry, onEdit }: BodyProps) {
   }
 
   const { weeks, people } = state.data
+  if (people.length === 0 && name) {
+    return <p className={state.loading ? 'stale' : undefined}>No one's name contains "{name}".</p>
+  }
   return (
     <table className={state.loading ? 'stale' : undefined} aria-busy={state.loading}>
       <thead>
@@ -227,6 +236,28 @@ function Pager({ offset, shown, total, onPrevious, onNext, disabled }: PagerProp
         Next page →
       </button>
     </nav>
+  )
+}
+
+// Searches once typing pauses, so each keystroke doesn't fire a request.
+function NameSearch({ name, onNameChange }: { name: string; onNameChange: (name: string) => void }) {
+  const [draft, setDraft] = useState(name)
+
+  // When the name changes from outside, show it.
+  useEffect(() => setDraft(name), [name])
+
+  useEffect(() => {
+    const trimmed = draft.trim()
+    if (trimmed === name) return
+    const timer = setTimeout(() => onNameChange(trimmed), 250)
+    return () => clearTimeout(timer)
+  }, [draft, name, onNameChange])
+
+  return (
+    <label className="name-search">
+      Name{' '}
+      <input type="search" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Filter people" />
+    </label>
   )
 }
 

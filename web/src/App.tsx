@@ -16,6 +16,10 @@ function pageFromURL(): number {
   return Number.isInteger(page) && page >= 1 ? page : 1
 }
 
+function nameFromURL(): string {
+  return new URLSearchParams(window.location.search).get('q') ?? ''
+}
+
 function rangeFromURL(): Range {
   const params = new URLSearchParams(window.location.search)
   const from = params.get('from') ?? ''
@@ -29,6 +33,7 @@ function rangeFromURL(): Range {
 export function App() {
   const [range, setRange] = useState(rangeFromURL)
   const [page, setPage] = useState(pageFromURL)
+  const [name, setName] = useState(nameFromURL)
 
   // Keep the URL in step so a refresh or a shared link opens the same view.
   useEffect(() => {
@@ -36,10 +41,18 @@ export function App() {
     url.searchParams.set('from', range.from)
     url.searchParams.set('to', range.to)
     url.searchParams.set('page', String(page))
+    if (name) url.searchParams.set('q', name)
+    else url.searchParams.delete('q')
     window.history.replaceState(null, '', url)
-  }, [range, page])
+  }, [range, page, name])
 
   const onRangeChange = useCallback((next: Range) => setRange(wholeWeeks(next.from, next.to)), [])
+
+  // A new search starts from the first page of its results.
+  const onNameChange = useCallback((next: string) => {
+    setName(next)
+    setPage(1)
+  }, [])
 
   return (
     <main>
@@ -48,8 +61,10 @@ export function App() {
         from={range.from}
         to={range.to}
         page={page}
+        name={name}
         onRangeChange={onRangeChange}
         onPageChange={setPage}
+        onNameChange={onNameChange}
       />
     </main>
   )

@@ -46,9 +46,11 @@ export async function fetchCapacity(
   from: string,
   to: string,
   offset: number,
+  name: string,
   signal?: AbortSignal,
 ): Promise<CapacityResponse> {
   const params = new URLSearchParams({ from, to, limit: String(PAGE_SIZE), offset: String(offset) })
+  if (name) params.set('q', name)
   const res = await fetch(`/api/capacity?${params}`, { signal })
   if (!res.ok) {
     throw new ApiError(res.status, await errorMessage(res))

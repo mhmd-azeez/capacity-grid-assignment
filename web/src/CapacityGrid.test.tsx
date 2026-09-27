@@ -41,7 +41,7 @@ function stubFetch(patch: (body: { weekly_hours: number }) => Response | Promise
 }
 
 async function openEditorAndSave(hours: string) {
-  render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={1} onRangeChange={() => {}} onPageChange={() => {}} />)
+  render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={1} name="" onRangeChange={() => {}} onPageChange={() => {}} onNameChange={() => {}} />)
   fireEvent.click(await screen.findByRole('button', { name: /Edit weekly hours for Ana Ferreira/ }))
   const dialog = screen.getByRole('dialog')
   fireEvent.change(within(dialog).getByRole('spinbutton'), { target: { value: hours } })
@@ -103,7 +103,7 @@ describe('paging through people', () => {
 
     function Paged() {
       const [page, setPage] = useState(1)
-      return <CapacityGrid from="2025-12-29" to="2026-01-11" page={page} onRangeChange={() => {}} onPageChange={setPage} />
+      return <CapacityGrid from="2025-12-29" to="2026-01-11" page={page} name="" onRangeChange={() => {}} onPageChange={setPage} onNameChange={() => {}} />
     }
     render(<Paged />)
 
@@ -126,8 +126,46 @@ describe('paging through people', () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ ...capacity, people: [], total: 21, offset: 180, limit: 20 })))
     const onPageChange = vi.fn()
 
-    render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={10} onRangeChange={() => {}} onPageChange={onPageChange} />)
+    render(<CapacityGrid from="2025-12-29" to="2026-01-11" page={10} name="" onRangeChange={() => {}} onPageChange={onPageChange} onNameChange={() => {}} />)
 
     await waitFor(() => expect(onPageChange).toHaveBeenCalledWith(2))
+  })
+})
+
+describe('filtering by name', () => {
+  it('sends the trimmed name once typing pauses and starts from the first page', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      const q = new URL(url, 'http://x').searchParams.get('q')
+      return json(q === 'bo' ? { ...capacity, people: [], total: 0 } : { ...capacity, total: 41 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    function Filtered() {
+      const [page, setPage] = useState(3)
+      const [name, setName] = useState('')
+      return (
+        <CapacityGrid
+          from="2025-12-29"
+          to="2026-01-11"
+          page={page}
+          name={name}
+          onRangeChange={() => {}}
+          onPageChange={setPage}
+          onNameChange={(n) => {
+            setName(n)
+            setPage(1)
+          }}
+        />
+      )
+    }
+    render(<Filtered />)
+    await screen.findByText('Ana Ferreira')
+
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  bo ' } })
+
+    await screen.findByText(/No one's name contains "bo"/)
+    const url = new URL(String(fetchMock.mock.calls.at(-1)?.[0]), 'http://x')
+    expect(url.searchParams.get('q')).toBe('bo')
+    expect(url.searchParams.get('offset')).toBe('0')
   })
 })

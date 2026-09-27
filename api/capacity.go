@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,11 +45,13 @@ type capacityPerson struct {
 // People sort by name with ICU collation. The database's default collation
 // comes from musl on the Alpine image and sorts byte-wise, which put
 // "Álvarez" after "Ruiz". id breaks ties so pages never overlap.
-// $3 is the page size and $4 the offset.
+// $3 is the page size, $4 the offset and $5 the name filter ('' for none).
 const capacityQuery = `
 WITH page AS (
   SELECT id, name, weekly_hours
   FROM people
+  WHERE $5::text = ''
+     OR name ILIKE '%' || replace(replace(replace($5::text, '\', '\\'), '%', '\%'), '_', '\_') || '%' -- see countQuery
   ORDER BY name COLLATE "und-x-icu", id
   LIMIT $3 OFFSET $4
 ),
@@ -81,8 +84,20 @@ LEFT JOIN alloc al ON al.person_id = p.id AND al.week_start = w.week_start
 GROUP BY p.id, p.name, p.weekly_hours
 ORDER BY p.name COLLATE "und-x-icu", p.id`
 
+// How many people match the name filter, across all pages. The filter must
+// match the one in capacityQuery. It's a case-insensitive substring match,
+// with \, % and _ escaped so a search can't use them as wildcards. ILIKE
+// because a pg_trgm index could serve it if the roster grows far enough to
+// need one. Accents must match: ignoring them needs the unaccent extension
+// or a custom collation, and the schema is fixed.
+const countQuery = `
+SELECT count(*)
+FROM people
+WHERE $1::text = ''
+   OR name ILIKE '%' || replace(replace(replace($1::text, '\', '\\'), '%', '\%'), '_', '\_') || '%'`
+
 // handleCapacity serves
-// GET /api/capacity?from=YYYY-MM-DD&to=YYYY-MM-DD[&limit=20][&offset=0]
+// GET /api/capacity?from=YYYY-MM-DD&to=YYYY-MM-DD[&limit=20][&offset=0][&q=name]
 //
 // The range is widened to whole weeks: from back to its Monday, to forward
 // to its Sunday.
@@ -118,7 +133,9 @@ func (s *server) handleCapacity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := s.db.Query(r.Context(), capacityQuery, monday, sunday, limit, offset)
+	name := strings.TrimSpace(q.Get("q"))
+
+	rows, err := s.db.Query(r.Context(), capacityQuery, monday, sunday, limit, offset, name)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -130,7 +147,7 @@ func (s *server) handleCapacity(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var total int
-	if err := s.db.QueryRow(r.Context(), `SELECT count(*) FROM people`).Scan(&total); err != nil {
+	if err := s.db.QueryRow(r.Context(), countQuery, name).Scan(&total); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
