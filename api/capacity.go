@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -20,10 +22,10 @@ type capacityResponse struct {
 }
 
 type capacityPerson struct {
-	ID          int       `json:"id"`
-	Name        string    `json:"name"`
-	WeeklyHours float64   `json:"weekly_hours"`
-	Allocated   []float64 `json:"allocated"`
+	ID          int       `json:"id" db:"id"`
+	Name        string    `json:"name" db:"name"`
+	WeeklyHours float64   `json:"weekly_hours" db:"weekly_hours"`
+	Allocated   []float64 `json:"allocated" db:"allocated"`
 }
 
 // Allocation per person per week, for the weeks between $1 (a Monday) and
@@ -50,8 +52,8 @@ alloc AS (
 )
 SELECT p.id,
        p.name,
-       p.weekly_hours::float8,
-       array_agg(coalesce(al.hours, 0)::float8 ORDER BY w.week_start)
+       p.weekly_hours::float8 AS weekly_hours,
+       array_agg(coalesce(al.hours, 0)::float8 ORDER BY w.week_start) AS allocated
 FROM people p
 CROSS JOIN weeks w
 LEFT JOIN alloc al ON al.person_id = p.id AND al.week_start = w.week_start
@@ -88,18 +90,8 @@ func (s *server) handleCapacity(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
-
-	people := []capacityPerson{}
-	for rows.Next() {
-		var p capacityPerson
-		if err := rows.Scan(&p.ID, &p.Name, &p.WeeklyHours, &p.Allocated); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		people = append(people, p)
-	}
-	if err := rows.Err(); err != nil {
+	people, err := pgx.CollectRows(rows, pgx.RowToStructByName[capacityPerson])
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
