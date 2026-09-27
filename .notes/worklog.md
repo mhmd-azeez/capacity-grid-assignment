@@ -31,3 +31,4 @@ left unfinished. Append as you go; a line or two per entry is right.
 - Weekly hours can be anything from 0 to 168, the number of hours in a week. 0 has to be allowed because Eli is already at 0.
 - There's no history of capacity in the schema, so a change applies to every week, past ones included. If someone drops from 40 to 32 hours next month, the grid will also show them at 32 last year. Proper fix is capacity with an effective date, which is out of scope here.
 - Two managers saving the same person at once: last write wins. No conflict check.
+- Deferred: simultaneous edits and capacity history. The first could be fixed by sending the value the manager started from and refusing the save with a 409 if it has changed since. The second needs a table of capacity changes with effective dates, which means changing the schema.
