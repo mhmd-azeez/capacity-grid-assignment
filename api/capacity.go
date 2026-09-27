@@ -63,15 +63,23 @@ alloc AS (
   SELECT a.person_id,
          d.day - (extract(isodow FROM d.day)::int - 1) AS week_start,
          sum(a.hours_per_day) AS hours
-  FROM assignments a
+  FROM (
+    -- The seed has 15 rows for most assignments, all with the same person
+    -- and dates. Adding up the hours of rows that share person and dates
+    -- before splitting into days gives the same totals from far fewer rows
+    -- (5 ms instead of 50 ms for two years of one page).
+    SELECT person_id, start_date, end_date, sum(hours_per_day) AS hours_per_day
+    FROM assignments
+    WHERE person_id = ANY (ARRAY(SELECT id FROM page))
+      AND start_date <= $2::date
+      AND end_date >= $1::date
+    GROUP BY 1, 2, 3
+  ) a
   CROSS JOIN LATERAL (
     SELECT greatest(a.start_date, $1::date) + n AS day
     FROM generate_series(0, least(a.end_date, $2::date) - greatest(a.start_date, $1::date)) AS n
   ) d
-  WHERE a.person_id IN (SELECT id FROM page)
-    AND a.start_date <= $2::date
-    AND a.end_date >= $1::date
-    AND extract(isodow FROM d.day) <= 5 -- Monday to Friday; weekends aren't working days
+  WHERE extract(isodow FROM d.day) <= 5 -- Monday to Friday; weekends aren't working days
   GROUP BY 1, 2
 )
 SELECT p.id,
